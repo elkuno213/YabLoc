@@ -24,7 +24,7 @@ namespace yabloc
 {
 namespace modularized_particle_filter
 {
-geometry_msgs::msg::Pose mean_pose(
+geometry_msgs::msg::Pose compute_mean_pose(
   const modularized_particle_filter_msgs::msg::ParticleArray & particle_array);
 
 Eigen::Matrix3f std_of_distribution(

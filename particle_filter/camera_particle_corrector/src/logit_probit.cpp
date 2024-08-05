@@ -12,38 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "camera_particle_corrector/logit.hpp"
+#include "camera_particle_corrector/logit_probit.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 
-namespace yabloc
-{
-namespace
-{
-struct ProbToLogitTable
-{
-  ProbToLogitTable()
-  {
+namespace yabloc {
+
+namespace {
+
+struct ProbitToLogitLUT {
+  ProbitToLogitLUT() {
     for (int i = 0; i < 100; ++i) {
-      float p = i / 100.0f;
+      float p      = i / 100.0f;
       table_.at(i) = std::log(p / std::max(1 - p, 1e-6f));
     }
   }
-  float operator()(float prob) const
-  {
+  float operator()(float prob) const {
     int index = std::clamp(int(prob * 100), 0, 99);
     return table_.at(index);
   }
 
   std::array<float, 100> table_;
-} prob_to_logit_table;
+} probit_to_logit_lut;
 
-}  // namespace
+} // namespace
 
-float logit_to_prob(float logit, float gain) { return 1.f / (1 + std::exp(-gain * logit)); }
+float logit_to_probit(float logit, float gain) {
+  return 1.f / (1 + std::exp(-gain * logit));
+}
 
-float prob_to_logit(float prob) { return prob_to_logit_table(prob); }
+float probit_to_logit(float prob) {
+  return probit_to_logit_lut(prob);
+}
 
-}  // namespace yabloc
+} // namespace yabloc

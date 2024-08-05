@@ -33,12 +33,17 @@ find_package(glog REQUIRED)
 # Executable
 set(TARGET camera_particle_corrector_node)
 ament_auto_add_executable(${TARGET}
+  src/camera_particle_corrector_node_main.cpp
   src/camera_particle_corrector_node.cpp
-  src/filt_lsd.cpp
-  src/logit.cpp
-  src/camera_particle_corrector_core.cpp)
+  src/fast_trigonometry.cpp
+  src/logit_probit.cpp
+  src/score.cpp
+)
 target_include_directories(${TARGET} PUBLIC include)
-target_include_directories(${TARGET} SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
+target_include_directories(${TARGET} SYSTEM PRIVATE
+  ${EIGEN3_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
+)
 target_link_libraries(${TARGET} Sophus::Sophus ${PCL_LIBRARIES} glog::glog)
 
 # ===================================================

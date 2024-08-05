@@ -43,7 +43,7 @@ double mean_radian(const std::vector<double> & angles, const std::vector<double>
 }
 }  // namespace
 
-geometry_msgs::msg::Pose mean_pose(
+geometry_msgs::msg::Pose compute_mean_pose(
   const modularized_particle_filter_msgs::msg::ParticleArray & particle_array)
 {
   using Pose = geometry_msgs::msg::Pose;
@@ -93,7 +93,7 @@ Eigen::Matrix3f std_of_distribution(
   const modularized_particle_filter_msgs::msg::ParticleArray & array)
 {
   using Particle = modularized_particle_filter_msgs::msg::Particle;
-  auto ori = mean_pose(array).orientation;
+  auto ori = compute_mean_pose(array).orientation;
   Eigen::Quaternionf orientation(ori.w, ori.x, ori.y, ori.z);
   float invN = 1.f / array.particles.size();
   Eigen::Vector3f mean = Eigen::Vector3f::Zero();
