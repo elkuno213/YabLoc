@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
-namespace yabloc
-{
-float logit_to_prob(float logit, float gain = 1.0f);
+#include <glog/logging.h>
 
-/**
- * Convert probability to logit
- * This function is much faster than logit_to_prob() because it refers to pre-computeed table
- *
- * @param[in] prob
- * @return logit
- */
-float prob_to_logit(float prob);
-}  // namespace yabloc
+#include "camera_particle_corrector/camera_particle_corrector_node.hpp"
+
+int main(int argc, char* argv[]) {
+  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();
+
+  namespace mpf = yabloc::modularized_particle_filter;
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<mpf::CameraParticleCorrector>());
+  rclcpp::shutdown();
+  return 0;
+}
