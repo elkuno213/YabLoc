@@ -1,6 +1,6 @@
 # This repository is archived
 
-**YabLoc was merged into Autoware on June 22, 2023. For more details, please refer to [this PR](https://github.com/autowarefoundation/autoware.universe/pull/3946). 
+**YabLoc was merged into Autoware on June 22, 2023. For more details, please refer to [this PR](https://github.com/autowarefoundation/autoware.universe/pull/3946).
 Future development will be conducted on [autoware.universe](https://github.com/autowarefoundation/autoware.universe).**
 
 **If you would like to perform a standalone verification of YabLoc, the "Quick Start Demo" provided in this README is useful.
@@ -44,6 +44,7 @@ mkdir yabloc_ws/src -p
 cd yabloc_ws
 git clone git@github.com:tier4/YabLoc.git src/YabLoc --recursive
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
+sudo apt-get -y install ccache ninja-build
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
 ```
@@ -51,7 +52,7 @@ source install/setup.bash
 <details><summary>The author often use this build command</summary><div>
 
 ```shell
-colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache --continue-on-error
+colcon build --symlink-install --cmake-args -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache --continue-on-error
 ```
 
 * (optional) ccache `(--cmake-args) -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache`
