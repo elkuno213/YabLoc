@@ -24,20 +24,17 @@
 
 #include <optional>
 
-namespace yabloc
-{
-namespace modularized_particle_filter
-{
-class AbstCorrector : public rclcpp::Node
-{
+namespace yabloc {
+namespace modularized_particle_filter {
+class AbstCorrector : public rclcpp::Node {
 public:
-  using Particle = modularized_particle_filter_msgs::msg::Particle;
+  using Particle      = modularized_particle_filter_msgs::msg::Particle;
   using ParticleArray = modularized_particle_filter_msgs::msg::ParticleArray;
 
-  AbstCorrector(const std::string & node_name);
+  AbstCorrector(const std::string& node_name);
 
 protected:
-  const float acceptable_max_delay_;  // [sec]
+  const float acceptable_max_delay_; // [sec]
   const bool visualize_;
   const rclcpp::Logger logger_;
 
@@ -45,15 +42,17 @@ protected:
   rclcpp::Publisher<ParticleArray>::SharedPtr particle_pub_;
   std::list<ParticleArray> particle_array_buffer_;
 
-  std::optional<ParticleArray> get_synchronized_particle_array(const rclcpp::Time & stamp);
+  std::optional<ParticleArray> get_synchronized_particle_array(
+    const rclcpp::Time& stamp
+  );
   std::shared_ptr<ParticleVisualizer> visualizer_;
 
-  void set_weighted_particle_array(const ParticleArray & particle_array);
+  void set_weighted_particle_array(const ParticleArray& particle_array);
 
 private:
-  void on_particle_array(const ParticleArray & particle_array);
+  void on_particle_array(const ParticleArray& particle_array);
 };
-}  // namespace modularized_particle_filter
-}  // namespace yabloc
+} // namespace modularized_particle_filter
+} // namespace yabloc
 
-#endif  // MODULARIZED_PARTICLE_FILTER__CORRECTION__ABST_CORRECTOR_HPP_
+#endif // MODULARIZED_PARTICLE_FILTER__CORRECTION__ABST_CORRECTOR_HPP_
