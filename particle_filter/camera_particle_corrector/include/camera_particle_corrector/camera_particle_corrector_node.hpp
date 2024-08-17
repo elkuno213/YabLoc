@@ -49,7 +49,7 @@ public:
 private:
   const float min_prob_;
   const float far_weight_gain_;
-  HierarchicalCostMap cost_map_;
+  lanelet2_cost_map::HierarchicalCostMap cost_map_;
 
   rclcpp::Subscription<PointCloud2>::SharedPtr bounding_box_sub_;
   rclcpp::Subscription<PointCloud2>::SharedPtr line_segments_cloud_sub_;

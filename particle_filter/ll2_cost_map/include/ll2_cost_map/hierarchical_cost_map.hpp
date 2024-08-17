@@ -13,126 +13,203 @@
 // limitations under the License.
 
 #pragma once
-#include <Eigen/StdVector>
-#include <opencv4/opencv2/core.hpp>
-#include <rclcpp/node.hpp>
-#include <yabloc_common/gamma_converter.hpp>
-
-#include <visualization_msgs/msg/marker_array.hpp>
-
-#include <boost/functional/hash.hpp>
-#include <boost/geometry/geometries/point_xy.hpp>
-#include <boost/geometry/geometries/polygon.hpp>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <Eigen/StdVector>
+#include <boost/functional/hash.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/geometry/geometries/point_xy.hpp>
+#include <boost/geometry/geometries/polygon.hpp>
+#include <opencv4/opencv2/core.hpp>
 
-namespace yabloc
-{
-struct Area
-{
-  Area() {}
-  Area(const Eigen::Vector2f & v)
-  {
-    if (unit_length_ < 0) throw_error();
-    x = static_cast<long>(std::floor(v.x() / unit_length_));
-    y = static_cast<long>(std::floor(v.y() / unit_length_));
+#include <rclcpp/node.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+
+#include <yabloc_common/gamma_converter.hpp>
+
+namespace yabloc::lanelet2_cost_map {
+
+using EigenPosition = Eigen::Vector2f; // position in world frame
+using CvPixel       = cv::Point2i;     // pixel in image frame
+
+using BoostPoint   = boost::geometry::model::d2::point_xy<double>;
+using BoostBox     = boost::geometry::model::box<BoostPoint>;
+using BoostPolygon = boost::geometry::model::polygon<BoostPoint>;
+
+using Marker      = visualization_msgs::msg::Marker;
+using MarkerArray = visualization_msgs::msg::MarkerArray;
+using Pose        = geometry_msgs::msg::Pose;
+
+// TODO: define following structures/aliases:
+// - Pose (maybe from Eigen)
+// - BoostLineSegment and BoostLineSegments
+// - LabelPoint, FrozenPolygon, and FrozenPolygons
+
+
+inline geometry_msgs::msg::Point to_ros(const EigenPosition& position) {
+  geometry_msgs::msg::Point point;
+  point.x = position.x();
+  point.y = position.y();
+  return point;
+}
+
+inline BoostPoint to_boost(const EigenPosition& position) {
+  return {position.x(), position.y()};
+}
+
+inline EigenPosition to_eigen(const BoostPoint& point) {
+  return {point.x(), point.y()};
+}
+
+// TODO: use center as origin instead of bottom-left to have cost map of 360 deg.
+// Area class represents a unit discretized area of the cost map.
+struct CostArea {
+  CostArea() {}
+
+  // Constructor with real scale bottom-left position in world frame.
+  CostArea(const EigenPosition& position) {
+    if (kMetricSize < 0) {
+      std::cerr << "CostArea::kMetricSize is not initialized.\n";
+      throw std::runtime_error("invalid CostArea::kMetricSize");
+    }
+
+    x = static_cast<int>(std::floor(position.x() / kMetricSize));
+    y = static_cast<int>(std::floor(position.y() / kMetricSize));
   }
 
-  Eigen::Vector2f real_scale() const { return {x * unit_length_, y * unit_length_}; };
-
-  std::array<Eigen::Vector2f, 2> real_scale_boundary() const
-  {
-    std::array<Eigen::Vector2f, 2> boundary;
-    boundary.at(0) = real_scale();
-    boundary.at(1) = real_scale() + Eigen::Vector2f(unit_length_, unit_length_);
-    return boundary;
-  };
-
-  void throw_error() const
-  {
-    std::cerr << "Area::unit_length_ is not initialized" << std::endl;
-    throw std::runtime_error("invalid Area::unit_length");
-  }
-  int x, y;
-  static float unit_length_;
-  static float image_size_;
-
-  friend bool operator==(const Area & one, const Area & other)
-  {
+  friend bool operator==(const CostArea& one, const CostArea& other) {
     return one.x == other.x && one.y == other.y;
   }
-  friend bool operator!=(const Area & one, const Area & other) { return !(one == other); }
-  size_t operator()(const Area & index) const
-  {
+
+  friend bool operator!=(const CostArea& one, const CostArea& other) {
+    return !(one == other);
+  }
+
+  // Hash function for CostArea.
+  std::size_t operator()(const CostArea& index) const {
     std::size_t seed = 0;
     boost::hash_combine(seed, index.x);
     boost::hash_combine(seed, index.y);
     return seed;
   }
-};
 
-struct CostMapValue
-{
-  CostMapValue(float intensity, int angle, bool unmapped)
-  : intensity(intensity), angle(angle), unmapped(unmapped)
-  {
+  CvPixel to_pixel(const EigenPosition& position, const int image_size) const {
+    const EigenPosition relative = position - bottom_left();
+    return {
+      static_cast<int>(relative.x() / kMetricSize * image_size),
+      static_cast<int>(relative.y() / kMetricSize * image_size)
+    };
   }
-  float intensity;  // 0~1
-  int angle;        // 0~180
-  bool unmapped;    // true/false
+
+  // Return the real scale of the corner positions of the area in world frame.
+  EigenPosition bottom_left() const {
+    return {x * kMetricSize, y * kMetricSize};
+  };
+
+  EigenPosition top_right() const {
+    return bottom_left() + EigenPosition(kMetricSize, kMetricSize);
+  };
+
+  EigenPosition top_left() const {
+    return bottom_left() + EigenPosition(0, kMetricSize);
+  };
+
+  EigenPosition bottom_right() const {
+    return bottom_left() + EigenPosition(kMetricSize, 0);
+  };
+
+  int x, y;                 // bottom-left pixel
+  static float kMetricSize; // unit size of the area in meters
 };
 
-class HierarchicalCostMap
-{
+// CostMapValue represents a pixel value of the cost map.
+struct CostMapValue {
+  CostMapValue(const float occupancy, const int direction, const bool frozen)
+    : occupancy(occupancy), direction(direction), frozen(frozen)
+  {}
+
+  float occupancy;   // [0, 1] Cost value representing current pixel's occupancy
+                     // from cloud, where 0 is free and 1 is occupied.
+  int   direction;   // [0, 180] Cost value representing current pixel's
+                     // angle of direction from cloud.
+  bool  frozen   ;   // Boolean value representing whether the pixel is frozen
+                     // or not. It lies in polygons whose label is bounding box.
+};
+
+// TODO: use meters_per_pixel instead of image_size.
+struct Parameters {
+  float                max_range = 40.0f; // Maximum range of the cost map [m].
+  int                 image_size = 800  ; // Size of the cost map image [pixel].
+  std::size_t        max_nb_maps = 10   ; // Maximum number of maps to be stored.
+  float                    gamma = 4.0f ; // Gamma value for gamma correction.
+  float min_height_diff_to_reset = 2.0f ; // Minimum height difference to reset maps [m].
+  float max_height_diff_to_build = 4.0f ; // Maximum height difference to build maps [m].
+};
+
+class HierarchicalCostMap {
 public:
-  using Marker = visualization_msgs::msg::Marker;
-  using MarkerArray = visualization_msgs::msg::MarkerArray;
-  using Pose = geometry_msgs::msg::Pose;
+  HierarchicalCostMap(const Parameters& parameters = Parameters());
 
-  using BgPoint = boost::geometry::model::d2::point_xy<double>;
-  using BgPolygon = boost::geometry::model::polygon<BgPoint>;
+  // Set height of the cost map and reset all maps.
+  void set_height(const float height);
 
-  HierarchicalCostMap(rclcpp::Node * node);
+  // Set the frozen polygons, who are sent as a point cloud from lanelet2 map,
+  // where the points of a polygon have the same label.
+  // TODO: refactor data structure. The current one is supposed to a list of
+  // label points, where label is used for same-polygon points.
+  void set_frozen_polygons(const pcl::PointCloud<pcl::PointXYZL>& cloud);
 
-  void set_cloud(const pcl::PointCloud<pcl::PointNormal> & cloud);
-  void set_bounding_box(const pcl::PointCloud<pcl::PointXYZL> & cloud);
+  // Set the cloud of line segments to be used for the cost map.
+  // TODO: refactor data structure. The current one is supposed to a list of
+  // normal points, where point is start and normal is end.
+  void set_road_markings(const pcl::PointCloud<pcl::PointNormal>& road_markings);
 
-  /**
-   * Get pixel value at specified pixel
-   *
-   * @param[in] position Real scale position at world frame
-   * @return The combination of intensity (0-1), angle (0-180), unmapped flag (0, 1)
-   */
-  CostMapValue at(const Eigen::Vector2f & position);
+  // Get pixel value at specified real scale position in world frame.
+  CostMapValue at(const EigenPosition& position);
 
   MarkerArray show_map_range() const;
 
-  cv::Mat get_map_image(const Pose & pose);
+  // TODO: refactor this function.
+  cv::Mat get_map_image(const Pose& pose);
 
   void erase_obsolete();
 
-  void set_height(float height);
+private:
+  // Build the cost map for the given area.
+  void build_map(const CostArea& area);
+
+  // Compute the cost occupancy map from the given occupancy map, where:
+  // - If occupied, then the occupancy is 0.
+  // - If free, then the occupancy is 100.
+  cv::Mat compute_occupancy_cost(const cv::Mat& occupancy) const;
+
+  // Compute the cost direction map from the given direction map and occupancy
+  // map, by propagating the occupancy and direction information from the
+  // top-left and bottom-right corners.
+  cv::Mat compute_direction_cost(
+    const cv::Mat& direction,
+    const cv::Mat& occupancy
+  );
+
+  // Compute the frozen map from the given area.
+  cv::Mat compute_frozen(const CostArea& area) const;
 
 private:
-  const float max_range_;
-  const float image_size_;
-  const size_t max_map_count_;
-  rclcpp::Logger logger_;
-  std::optional<float> height_{std::nullopt};
+  Parameters params_;
 
-  common::GammaConverter gamma_converter{4.0f};
+  // A list of all generated areas.
+  std::list<CostArea> generated_areas_;
+  // A list of all accessed areas.
+  std::unordered_map<CostArea, bool, CostArea> accessed_areas_;
+  // A list of all current maps.
+  std::unordered_map<CostArea, cv::Mat, CostArea> maps_;
 
-  std::unordered_map<Area, bool, Area> map_accessed_;
+  std::optional<float> height_ = std::nullopt;
+  std::vector<BoostPolygon> frozen_polygons_;
+  std::optional<pcl::PointCloud<pcl::PointNormal>> cloud_ = std::nullopt;
 
-  std::list<Area> generated_map_history_;
-  std::optional<pcl::PointCloud<pcl::PointNormal>> cloud_;
-  std::vector<BgPolygon> bounding_boxes_;
-  std::unordered_map<Area, cv::Mat, Area> cost_maps_;
-
-  cv::Point to_cv_point(const Area & are, const Eigen::Vector2f) const;
-  void build_map(const Area & area);
-
-  cv::Mat create_available_area_image(const Area & area) const;
+  common::GammaConverter gamma_converter_;
 };
-}  // namespace yabloc
+
+} // namespace yabloc::lanelet2_cost_map

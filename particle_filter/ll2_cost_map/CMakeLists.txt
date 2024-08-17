@@ -28,7 +28,6 @@ find_package(PCL REQUIRED COMPONENTS common)
 ament_auto_add_library(${PROJECT_NAME}
   SHARED
   src/hierarchical_cost_map.cpp
-  src/direct_cost_map.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})

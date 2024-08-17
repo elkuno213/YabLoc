@@ -40,8 +40,14 @@ CameraParticleCorrector::CameraParticleCorrector()
   : AbstCorrector("camera_particle_corrector")
   , min_prob_(declare_parameter<float>("min_prob", 0.01))
   , far_weight_gain_(declare_parameter<float>("far_weight_gain", 0.001))
-  , cost_map_(this)
 {
+  // TODO: declare other parameters of the cost map.
+  lanelet2_cost_map::Parameters params;
+  params.max_range = declare_parameter<float>("max_range", 40.0f);
+  params.image_size = declare_parameter<int>("image_size", 800);
+  params.gamma = declare_parameter<float>("gamma", 5.0f);
+  cost_map_ = lanelet2_cost_map::HierarchicalCostMap(params);
+
   using std::placeholders::_1;
   using std::placeholders::_2;
 
@@ -232,7 +238,7 @@ void CameraParticleCorrector::on_line_segments(const PointCloud2& msg) {
 void CameraParticleCorrector::on_ll2_road_marking(const PointCloud2& ll2_msg) {
   pcl::PointCloud<pcl::PointNormal> ll2_cloud;
   pcl::fromROSMsg(ll2_msg, ll2_cloud);
-  cost_map_.set_cloud(ll2_cloud);
+  cost_map_.set_road_markings(ll2_cloud);
   RCLCPP_INFO_STREAM(get_logger(), "Set LL2 cloud into hierarchical cost map");
 }
 
@@ -240,7 +246,7 @@ void CameraParticleCorrector::on_ll2_bounding_box(const PointCloud2& msg) {
   // NOTE: Under construction
   pcl::PointCloud<pcl::PointXYZL> ll2_bounding_box;
   pcl::fromROSMsg(msg, ll2_bounding_box);
-  cost_map_.set_bounding_box(ll2_bounding_box);
+  cost_map_.set_frozen_polygons(ll2_bounding_box);
   RCLCPP_INFO_STREAM(get_logger(), "Set bounding box into hierarchical cost map");
 }
 
@@ -331,10 +337,10 @@ float CameraParticleCorrector::compute_logit(
       const float gain = std::exp(-far_weight_gain_ * squared_norm); // 0 < gain < 1
 
       // Get cost map pixel value at the current point.
-      const CostMapValue pixel = cost_map_.at(curr.topRows(2));
+      const lanelet2_cost_map::CostMapValue pixel = cost_map_.at(curr.topRows(2));
 
-      // logit does not change if target pixel is unmapped.
-      if (pixel.unmapped) {
+      // logit does not change if target pixel is frozen.
+      if (pixel.frozen) {
         continue;
       }
 
@@ -342,11 +348,11 @@ float CameraParticleCorrector::compute_logit(
       // pixel direction.
       const float closeness = score_closeness_by_dot_product(
         direction.topRows(2).normalized(),
-        pixel.angle
+        pixel.direction
       );
 
       // Update logit based on the label.
-      const float increment = gain * (closeness * pixel.intensity - 0.5f);
+      const float increment = gain * (closeness * pixel.occupancy - 0.5f);
       if (ls.label == 0) {
         // posteriori.
         logit += 0.2f * increment;
@@ -380,19 +386,19 @@ pcl::PointCloud<pcl::PointXYZI> CameraParticleCorrector::evaluate_cloud(
       float gain         = std::exp(-far_weight_gain_ * squared_norm);
 
       // Get cost map pixel value at the current point.
-      CostMapValue pixel = cost_map_.at(curr.topRows(2));
+      auto pixel = cost_map_.at(curr.topRows(2));
 
       // Compute logit based on the label.
       float logit = 0;
-      if (!pixel.unmapped) {
+      if (!pixel.frozen) {
         // Compute the closeness between the direction of the line segment and
         // the pixel direction.
         const float closeness = score_closeness_by_dot_product(
           direction.topRows(2).normalized(),
-          pixel.angle
+          pixel.direction
         );
         // Compute logit.
-        logit = gain * (closeness * pixel.intensity - 0.5f);
+        logit = gain * (closeness * pixel.occupancy - 0.5f);
       }
 
       // Update cloud.
@@ -428,12 +434,12 @@ std::pair<
       const Eigen::Vector3f curr = transform * (end + direction * distance);
       const Eigen::Vector3f transformed_direction = transform.so3() * direction;
 
-      const CostMapValue pixel = cost_map_.at(curr.topRows(2));
+      const auto pixel = cost_map_.at(curr.topRows(2));
       const float closeness = score_closeness_by_angle_diff(
         transformed_direction.topRows(2),
-        pixel.angle
+        pixel.direction
       );
-      score += (closeness * pixel.intensity);
+      score += (closeness * pixel.occupancy);
 
       count++;
     }
